@@ -7,19 +7,16 @@
   installShellFiles,
   nix-update-script,
 }:
-let
-  version = "0.0.62";
-in
-buildGoModule {
+buildGoModule (finalAttrs: {
 
   pname = "mcap-cli";
 
-  inherit version;
+  version = "0.0.62";
 
   src = fetchFromGitHub {
     repo = "mcap";
     owner = "foxglove";
-    rev = "releases/mcap-cli/v${version}";
+    rev = "releases/mcap-cli/v${finalAttrs.version}";
     hash = "sha256-lVTL+pa+gTPQWj7+RmaJUIdfOlPhlGtHujBalR+GDsI=";
   };
 
@@ -39,7 +36,7 @@ buildGoModule {
     "osusergo"
   ];
 
-  ldflags = [ "-X github.com/foxglove/mcap/go/cli/mcap/cmd.Version=${version}" ];
+  ldflags = [ "-X github.com/foxglove/mcap/go/cli/mcap/cmd.Version=${finalAttrs.version}" ];
 
   env = {
     CGO_ENABLED = "1";
@@ -56,7 +53,7 @@ buildGoModule {
   checkFlags = [
     # requires git-lfs and network
     # https://github.com/foxglove/mcap/issues/895
-    "-skip=TestCat|TestInfo|TestRequiresDuplicatedSchemasForIndexedMessages|TestPassesIndexedMessagesWithRepeatedSchemas|TestSortFile"
+    "-skip=TestCat|TestInfo|TestRequiresDuplicatedSchemasForIndexedMessages|TestPassesIndexedMessagesWithRepeatedSchemas"
   ];
 
   postInstall = lib.optionalString (stdenv.hostPlatform.emulatorAvailable buildPackages) (
@@ -71,6 +68,22 @@ buildGoModule {
     ''
   );
   passthru = {
+    # the conformance .mcap fixtures are git-lfs pointers in the archive tarball
+    testFixtures = fetchFromGitHub {
+      owner = "foxglove";
+      repo = "mcap";
+      inherit (finalAttrs.src) rev;
+      sparseCheckout = [ "tests/conformance/data" ];
+      fetchLFS = true;
+      hash = "sha256-31T2XiIbRwZRH8Du7l4pc7QcqRNitTFc2gL1TsvAdPE=";
+    };
+    tests.full = finalAttrs.finalPackage.overrideAttrs (old: {
+      checkFlags = [ "-v" ];
+      # replace the git-lfs pointer files with the real fixtures
+      preCheck = ''
+        cp -rf --no-preserve=mode ${finalAttrs.passthru.testFixtures}/tests/conformance/data/. ../../../tests/conformance/data/
+      '';
+    });
     updateScript = nix-update-script { };
   };
 
@@ -84,4 +97,4 @@ buildGoModule {
     mainProgram = "mcap";
   };
 
-}
+})
